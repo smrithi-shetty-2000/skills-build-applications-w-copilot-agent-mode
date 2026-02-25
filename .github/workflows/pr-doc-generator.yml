@@ -9,68 +9,94 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️ Checkout full repo history
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Fetch main branch
-        run: git fetch origin main
-
+      # 2️ Generate diff using PR base and head
       - name: Generate PR diff
         run: |
-          git diff origin/main > pr.diff
-          wc -c pr.diff
+          echo "Base branch: ${{ github.event.pull_request.base.ref }}"
+          echo "Head branch: ${{ github.event.pull_request.head.ref }}"
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.diff
 
+          # Trim to avoid token overflow
+          head -c 15000 pr.diff > pr_trimmed.diff
+
+          echo "Diff size:"
+          wc -c pr_trimmed.diff
+
+      # 3️ Install dependencies
+      - name: Install jq and pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq pandoc
+
+      # 4️ Prepare JSON safely using jq
       - name: Prepare OpenAI request
         run: |
-          DIFF_CONTENT=$(cat pr.diff | sed 's/"/\\"/g')
+          DIFF_CONTENT=$(cat pr_trimmed.diff)
 
-          cat <<EOF > request.json
-          {
-          "messages": [
-          {
-          "role": "system",
-          "content": "You are a senior software documentation assistant."
-          },
-          {
-          "role": "user",
-          "content": "Analyze this PR diff and generate structured documentation.\n\nInclude:\n- Modified Files\n- Added Files\n- Classes Added/Modified\n- Methods Added/Modified\n- APIs changed\n\nClearly mention all entity names exactly as written.\n\nPR DIFF:\n$DIFF_CONTENT"
-          }
-          ],
-          "temperature": 0.2,
-          "max_tokens": 2000
-          }
-          EOF
+          jq -n \
+          --arg diff "$DIFF_CONTENT" \
+          '{
+            messages: [
+              {
+                role: "system",
+                content: "You are a senior software documentation assistant."
+              },
+              {
+                role: "user",
+                content: ("Analyze this PR diff and generate structured documentation.\n\nInclude:\n- Modified Files\n- Added Files\n- Deleted Files\n- Summary of Changes\n- Entities (classes, functions, APIs modified)\n\nPR Diff:\n" + $diff)
+              }
+            ],
+            temperature: 0.2,
+            max_tokens: 1500
+          }' > request.json
 
+          cat request.json
+
+      # 5️ Call Azure OpenAI (Correct format)
       - name: Call Azure OpenAI
         env:
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
-          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
         run: |
-          curl -s "$AZURE_OPENAI_ENDPOINT/openai/deployments/$AZURE_OPENAI_DEPLOYMENT/chat/completions?api-version=2024-02-15-preview" \
+          curl -s -X POST \
+          "$AZURE_OPENAI_ENDPOINT/openai/deployments/o3-mini/chat/completions?api-version=2024-02-15-preview" \
           -H "Content-Type: application/json" \
           -H "api-key: $AZURE_OPENAI_KEY" \
-          -d @request.json > response.json
+          -d @request.json \
+          -o response.json
 
-      - name: Extract response to Markdown
+          echo "Response:"
+          cat response.json
+
+      # 6️ Extract documentation safely
+      - name: Extract documentation
         run: |
-          jq -r '.choices[0].message.content' response.json > Documentation.md
-          cat Documentation.md
+          if jq -e '.choices[0].message.content' response.json > /dev/null; then
+            jq -r '.choices[0].message.content' response.json > documentation.md
+          else
+            echo "Azure OpenAI returned an error:" > documentation.md
+            jq -r '.error.message' response.json >> documentation.md
+          fi
 
-      - name: Install pandoc
-        run: sudo apt-get install -y pandoc
+          echo "Generated documentation:"
+          cat documentation.md
 
+      # 7️ Convert to Word document
       - name: Convert to Word document
         run: |
-          pandoc Documentation.md -o SIG_documentation.docx
+          pandoc documentation.md -o PR_Documentation.docx
 
-      - name: Upload Word document artifact
+      # 8️ Upload artifact
+      - name: Upload PR Documentation
         uses: actions/upload-artifact@v4
         with:
-          name: pr-documentation
-          path: SIG_documentation.docx
+          name: PR-Documentation
+          path: PR_Documentation.docx
