@@ -60,16 +60,13 @@ jobs:
 
           cat request.json
 
-      # 5️ Call Azure OpenAI (Correct format)
+      # 5️ Call Azure OpenAI (Updated API version)
       - name: Call Azure OpenAI
-        env:
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
         run: |
           curl -s -X POST \
-          "$AZURE_OPENAI_ENDPOINT/openai/deployments/o3-mini/chat/completions?api-version=2024-02-15-preview" \
+          "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/o3-mini/chat/completions?api-version=2024-12-01-preview" \
           -H "Content-Type: application/json" \
-          -H "api-key: $AZURE_OPENAI_KEY" \
+          -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
           -d @request.json \
           -o response.json
 
