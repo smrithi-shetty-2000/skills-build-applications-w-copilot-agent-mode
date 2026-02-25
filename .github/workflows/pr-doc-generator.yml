@@ -40,13 +40,26 @@ jobs:
       # 4️ Prepare JSON safely using jq
       - name: Prepare OpenAI request
         run: |
+          echo "Fetching PR file list from GitHub API..."
+
+          curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files \
+            > pr_files.json
+
+          echo "Preparing trimmed diff..."
+          head -c 60000 pr.diff > pr_trimmed.diff
+
           DIFF_CONTENT=$(cat pr_trimmed.diff)
+          FILES_CONTENT=$(cat pr_files.json)
 
           jq -n \
             --arg actor "${{ github.actor }}" \
             --arg title "${{ github.event.pull_request.title }}" \
             --arg body "${{ github.event.pull_request.body }}" \
             --arg diff "$DIFF_CONTENT" \
+            --arg files "$FILES_CONTENT" \
             '{
               messages: [
                 {
@@ -56,86 +69,81 @@ jobs:
                 {
                   role: "user",
                   content:
-                    ("Generate a professional enterprise deployment document in strict Markdown format.\n\n"
-
-                    + "Formatting Rules:\n"
-                    + "- Use Markdown only.\n"
-                    + "- Use # for main title.\n"
-                    + "- Use ## for section headings.\n"
-                    + "- Use horizontal separators (---) between sections.\n"
-                    + "- Ensure 2-3 blank lines between sections.\n"
-                    + "- Ensure spacing renders properly in Microsoft Word via Pandoc.\n\n"
+                    ("STRICT OUTPUT RULES:\n"
+                    + "- Return ONLY valid Markdown.\n"
+                    + "- DO NOT print raw git diff.\n"
+                    + "- DO NOT print JSON.\n"
+                    + "- DO NOT echo input.\n"
+                    + "- Output must end after Section 5.\n\n"
 
                     + "# AEAP Deployment Guide\n\n"
                     + "---\n\n"
 
                     + "## HEADER SECTION\n\n"
-                    + "Generate the following structured table using the dynamic values provided:\n\n"
                     + "| Version | Date | Updated By | Comments |\n"
                     + "|---------|------|------------|----------|\n"
                     + "| 1.0 | " + (now | strftime("%Y-%m-%d")) + " | " + $actor + " | " + $title + " |\n\n"
-                    + "<br><br><br>\n\n"
+
                     + "---\n\n"
 
                     + "## SECTION 1: Commit Summary\n\n"
-                    + "List all commit messages associated with this Pull Request:\n\n"
                     + ($body // "No description provided") + "\n\n"
-                    + "<br><br><br>\n\n"
+
                     + "---\n\n"
 
                     + "## SECTION 2: Brief Overview\n\n"
-                    + "Provide a concise 3-4 line enterprise-level explanation of what this Pull Request implements.\n\n"
-                    + "<br><br><br>\n\n"
+                    + "Provide a concise 3-4 line enterprise-level summary of this PR.\n\n"
+
                     + "---\n\n"
 
                     + "## SECTION 3: Files / Entities Modified\n\n"
-                    + "Clearly structure into sub-sections:\n\n"
+                    + "Classify using PR FILE LIST JSON below.\n"
+                    + "Clearly separate into:\n"
                     + "### Modified Files\n"
                     + "### Added Files\n"
                     + "### Deleted Files\n"
                     + "### Impacted Classes / Functions / APIs\n\n"
-                    + "Keep structured and clean.\n\n"
-                    + "<br><br><br>\n\n"
+
                     + "---\n\n"
 
                     + "## SECTION 4: Technical Impact\n\n"
-                    + "Provide a short and precise technical impact summary (maximum 5 lines).\n\n"
-                    + "<br><br><br>\n\n"
+                    + "Provide a short and precise technical impact summary (max 5 lines).\n\n"
+
                     + "---\n\n"
 
                     + "## SECTION 5: Deployment / Release Notes\n\n"
-                    + "Present the following in a structured bullet format with Yes/No and short note:\n"
+                    + "For each item answer Yes/No with short note:\n"
                     + "- Database scripts or schema\n"
                     + "- Configuration files\n"
                     + "- CI/CD pipelines\n"
                     + "- Workflows or automation\n"
                     + "- Infrastructure or environment changes\n\n"
-                    + "<br><br><br>\n\n"
+
                     + "---\n\n"
 
-                    + "## PR DIFF ANALYSIS\n\n"
-                    + "Use the diff below to extract file changes and impacted entities.\n\n"
-                    + $diff)
+                    + "INTERNAL DATA (DO NOT PRINT):\n\n"
+                    + "PR FILE LIST JSON:\n" + $files + "\n\n"
+                    + "GIT DIFF (ANALYZE BUT DO NOT PRINT):\n" + $diff
+                    )
                 }
               ],
-              max_completion_tokens: 1800
+              temperature: 0.2,
+              max_completion_tokens: 2000
             }' > request.json
 
-          echo "Generated request.json:"
-          cat request.json
+          echo "OpenAI request prepared."
 
       # 5️ Call Azure OpenAI
       - name: Call Azure OpenAI
         run: |
           curl -s -X POST \
-            "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/o3-mini/chat/completions?api-version=2024-12-01-preview" \
+            "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-12-01-preview" \
             -H "Content-Type: application/json" \
             -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
             -d @request.json \
             -o response.json
 
-          echo "Response:"
-          cat response.json
+          echo "Response received."
 
       # 6️ Extract documentation safely
       - name: Extract documentation
