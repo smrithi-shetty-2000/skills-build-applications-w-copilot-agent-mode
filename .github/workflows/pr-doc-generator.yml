@@ -42,32 +42,32 @@ jobs:
           DIFF_CONTENT=$(cat pr_trimmed.diff)
 
           jq -n \
-          --arg diff "$DIFF_CONTENT" \
-          '{
-            messages: [
-              {
-                role: "system",
-                content: "You are a senior enterprise software release documentation specialist."
-              },
-              {
-                role: "user",
-                "content": "Generate a structured enterprise deployment document for this Pull Request.\n\nDOCUMENT TITLE:\nAEAP Deployment Guide\n\nDOCUMENT REQUIREMENTS:\n\n1. Header Section (Single Row Table)\n   - Version: 1.0\n   - Date: Use today's date\n   - Updated By: Use GitHub actor name\n   - Description: Use PR title\n\n2. Section 1: Commit Summary\n   - List all commit messages associated with this Pull Request.\n\n3. Section 2: Brief Overview\n   - Provide a concise enterprise-level explanation of what this Pull Request implements.\n\n4. Section 3: Files / Entities Modified\n   From the PR Diff, clearly identify:\n   - Modified files\n   - Added files\n   - Deleted files\n   - Any identifiable classes, functions, APIs, or key entities impacted\n   - Use exact names as shown in the diff\n\n5. Section 4: Technical Impact\n   - Explain the technical impact of these changes\n   - Mention affected modules, components, or services if identifiable\n\n6. Section 5: Deployment / Release Notes\n   Indicate whether any of the following are affected:\n   - Database scripts or schema\n   - Configuration files\n   - CI/CD pipelines\n   - Workflows or automation\n   - Infrastructure or environment changes\n\nINPUT DATA:\n\nPR Title:\n${{ github.event.pull_request.title }}\n\nGitHub Actor:\n${{ github.actor }}\n\nCommit Messages:\n${{ github.event.pull_request.body }}\n\nPR Diff:\n${DIFF_CONTENT}\n\nOUTPUT REQUIREMENTS:\n- Professional and enterprise-ready\n- Clear section headings\n- Clean formatting suitable for Word conversion\n- Formal technical documentation tone"
-              }
-            ],
-            max_completion_tokens: 1500
-          }' > request.json
+            --arg diff "$DIFF_CONTENT" \
+            '{
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a senior enterprise software release documentation specialist."
+                },
+                {
+                  role: "user",
+                  content: "Generate a structured enterprise deployment document for this Pull Request.\n\nDOCUMENT TITLE:\nAEAP Deployment Guide\n\nDOCUMENT REQUIREMENTS:\n\n1. Header Section (Single Row Table)\n   - Version: 1.0\n   - Date: Use today's date\n   - Updated By: Use GitHub actor name\n   - Description: Use PR title\n\n2. Section 1: Commit Summary\n   - List all commit messages associated with this Pull Request.\n\n3. Section 2: Brief Overview\n   - Provide a concise enterprise-level explanation of what this Pull Request implements.\n\n4. Section 3: Files / Entities Modified\n   From the PR Diff, clearly identify:\n   - Modified files\n   - Added files\n   - Deleted files\n   - Any identifiable classes, functions, APIs, or key entities impacted\n   - Use exact names as shown in the diff\n\n5. Section 4: Technical Impact\n   - Explain the technical impact of these changes\n   - Mention affected modules, components, or services if identifiable\n\n6. Section 5: Deployment / Release Notes\n   Indicate whether any of the following are affected:\n   - Database scripts or schema\n   - Configuration files\n   - CI/CD pipelines\n   - Workflows or automation\n   - Infrastructure or environment changes\n\nINPUT DATA:\n\nPR Title:\n${{ github.event.pull_request.title }}\n\nGitHub Actor:\n${{ github.actor }}\n\nCommit Messages:\n${{ github.event.pull_request.body }}\n\nPR Diff:\n\($diff)\n\nOUTPUT REQUIREMENTS:\n- Professional and enterprise-ready\n- Clear section headings\n- Clean formatting suitable for Word conversion\n- Formal technical documentation tone"
+                }
+              ],
+              max_completion_tokens: 1500
+            }' > request.json
 
           cat request.json
 
-      # 5️ Call Azure OpenAI (Updated API version)
+      # 5️ Call Azure OpenAI
       - name: Call Azure OpenAI
         run: |
           curl -s -X POST \
-          "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/o3-mini/chat/completions?api-version=2024-12-01-preview" \
-          -H "Content-Type: application/json" \
-          -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
-          -d @request.json \
-          -o response.json
+            "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/o3-mini/chat/completions?api-version=2024-12-01-preview" \
+            -H "Content-Type: application/json" \
+            -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
+            -d @request.json \
+            -o response.json
 
           echo "Response:"
           cat response.json
@@ -88,11 +88,11 @@ jobs:
       # 7️ Convert to Word document
       - name: Convert to Word document
         run: |
-          pandoc documentation.md -o PR_Documentation.docx
+          pandoc documentation.md -o SIG_Documentation.docx
 
       # 8️ Upload artifact
       - name: Upload PR Documentation
         uses: actions/upload-artifact@v4
         with:
-          name: SIG-Documentation
+          name: SIG_Documentation
           path: SIG_Documentation.docx
