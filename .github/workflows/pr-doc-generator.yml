@@ -55,7 +55,7 @@ jobs:
               }
             ],
             temperature: 0.2,
-            max_tokens: 1500
+            max_completion_tokens: 1500
           }' > request.json
 
           cat request.json
