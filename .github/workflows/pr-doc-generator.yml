@@ -17,34 +17,28 @@ jobs:
           git fetch origin main
           git diff origin/main > pr_changes.txt
 
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
       - name: Call Azure OpenAI
         run: |
           PR_CONTENT=$(cat pr_changes.txt | sed 's/"/\\"/g')
 
-          cat <<EOF > request.json
-          {
-          "messages": [
-          {
-          "role": "system",
-          "content": "You are a documentation assistant."
-          },
-          {
-          "role": "user",
-          "content": "Generate documentation for this PR change:\n\n$PR_CONTENT"
-          }
-          ],
-          "max_tokens": 800
-          }
-          EOF
-
-          curl -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-12-01-preview" \
+          RESPONSE=$(curl -s -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-12-01-preview" \
           -H "Content-Type: application/json" \
           -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
-          --data @request.json \
-          > output.json
+          -d "{
+          \"messages\": [
+          {\"role\": \"system\", \"content\": \"You are a professional technical documentation assistant.\"},
+          {\"role\": \"user\", \"content\": \"Generate professional Markdown documentation for the following pull request changes. Include:\n\n1. Summary\n2. Detailed Changes\n3. Technical Details\n4. Impact\n5. How to Test\n\nPR Changes:\n\n$PR_CONTENT\"}
+          ],
+          \"max_tokens\": 1000
+          }")
 
-      - name: Upload doc
+          echo "$RESPONSE" | jq -r '.choices[0].message.content' > documentation.md
+
+      - name: Upload documentation artifact
         uses: actions/upload-artifact@v4
         with:
           name: pr-documentation
-          path: output.json
+          path: documentation.md
