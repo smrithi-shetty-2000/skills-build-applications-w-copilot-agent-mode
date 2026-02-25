@@ -1,39 +1,76 @@
-name: PR Doc Generator
+name: Generate PR Documentation
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
 
 jobs:
   generate-doc:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Get PR diff
+      - name: Fetch main branch
+        run: git fetch origin main
+
+      - name: Generate PR diff
         run: |
-          git fetch origin main
-          git diff origin/main > pr_changes.txt
+          git diff origin/main > pr.diff
+          wc -c pr.diff
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Prepare OpenAI request
+        run: |
+          DIFF_CONTENT=$(cat pr.diff | sed 's/"/\\"/g')
+
+          cat <<EOF > request.json
+          {
+          "messages": [
+          {
+          "role": "system",
+          "content": "You are a senior software documentation assistant."
+          },
+          {
+          "role": "user",
+          "content": "Analyze this PR diff and generate structured documentation.\n\nInclude:\n- Modified Files\n- Added Files\n- Classes Added/Modified\n- Methods Added/Modified\n- APIs changed\n\nClearly mention all entity names exactly as written.\n\nPR DIFF:\n$DIFF_CONTENT"
+          }
+          ],
+          "temperature": 0.2,
+          "max_tokens": 2000
+          }
+          EOF
 
       - name: Call Azure OpenAI
+        env:
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
         run: |
-          PR_CONTENT=$(cat pr_changes.txt | sed 's/"/\\"/g')
-
-          curl -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-02-15-preview" \
+          curl -s "$AZURE_OPENAI_ENDPOINT/openai/deployments/$AZURE_OPENAI_DEPLOYMENT/chat/completions?api-version=2024-02-15-preview" \
           -H "Content-Type: application/json" \
-          -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
-          -d "{
-          \"messages\": [
-          {\"role\": \"system\", \"content\": \"You are a documentation assistant.\"},
-          {\"role\": \"user\", \"content\": \"Generate documentation for this PR change:\n\n${PR_CONTENT}\"}
-          ],
-          \"max_tokens\": 800
-          }" > output.json
+          -H "api-key: $AZURE_OPENAI_KEY" \
+          -d @request.json > response.json
 
-      - name: Upload doc
+      - name: Extract response to Markdown
+        run: |
+          jq -r '.choices[0].message.content' response.json > Documentation.md
+          cat Documentation.md
+
+      - name: Install pandoc
+        run: sudo apt-get install -y pandoc
+
+      - name: Convert to Word document
+        run: |
+          pandoc Documentation.md -o SIG_documentation.docx
+
+      - name: Upload Word document artifact
         uses: actions/upload-artifact@v4
         with:
           name: pr-documentation
-          path: output.json
+          path: SIG_documentation.docx
