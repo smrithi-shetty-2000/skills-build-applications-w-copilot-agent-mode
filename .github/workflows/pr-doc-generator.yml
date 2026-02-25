@@ -22,20 +22,32 @@ jobs:
 
       - name: Call Azure OpenAI
         run: |
-          PR_CONTENT=$(cat pr_changes.txt | sed 's/"/\\"/g')
+          # Limit PR content to avoid extremely large payloads
+          head -c 20000 pr_changes.txt > pr_trimmed.txt
 
-          RESPONSE=$(curl -s -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-12-01-preview" \
+          # Create request JSON file
+          cat <<EOF > request.json
+          {
+          "messages": [
+          {
+          "role": "system",
+          "content": "You are a professional technical documentation assistant."
+          },
+          {
+          "role": "user",
+          "content": "Generate professional Markdown documentation for the following pull request changes.\n\n$(sed 's/"/\\"/g' pr_trimmed.txt)"
+          }
+          ],
+          "max_tokens": 1000
+          }
+          EOF
+
+          # Call Azure OpenAI using file instead of inline data
+          curl -s -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-12-01-preview" \
           -H "Content-Type: application/json" \
           -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
-          -d "{
-          \"messages\": [
-          {\"role\": \"system\", \"content\": \"You are a professional technical documentation assistant.\"},
-          {\"role\": \"user\", \"content\": \"Generate professional Markdown documentation for the following pull request changes. Include:\n\n1. Summary\n2. Detailed Changes\n3. Technical Details\n4. Impact\n5. How to Test\n\nPR Changes:\n\n$PR_CONTENT\"}
-          ],
-          \"max_tokens\": 1000
-          }")
-
-          echo "$RESPONSE" | jq -r '.choices[0].message.content' > documentation.md
+          -d @request.json \
+          | jq -r '.choices[0].message.content' > documentation.md
 
       - name: Upload documentation artifact
         uses: actions/upload-artifact@v4
