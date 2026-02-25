@@ -2,7 +2,10 @@ name: Generate PR Documentation
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 jobs:
   generate-doc:
@@ -39,9 +42,12 @@ jobs:
       # 4️ Prepare JSON safely using jq
       - name: Prepare OpenAI request
         run: |
-          DIFF_CONTENT=$(<pr_trimmed.diff)
+          DIFF_CONTENT=$(cat pr_trimmed.diff)
 
           jq -n \
+            --arg actor "${{ github.actor }}" \
+            --arg title "${{ github.event.pull_request.title }}" \
+            --arg body "${{ github.event.pull_request.body }}" \
             --arg diff "$DIFF_CONTENT" \
             '{
               messages: [
@@ -52,61 +58,42 @@ jobs:
                 {
                   role: "user",
                   content:
-                    "Generate a structured enterprise deployment document for this Pull Request.\n\n" +
-
-                    "DOCUMENT TITLE:\nAEAP Deployment Guide\n\n" +
-
-                    "DOCUMENT REQUIREMENTS:\n\n" +
-
-                    "1. Header Section (Single Row Table)\n" +
-                    "   - Version: 1.0\n" +
-                    "   - Date: Use today's date\n" +
-                    "   - Updated By: Use GitHub actor name\n" +
-                    "   - Description: Use PR title\n\n" +
-
-                    "2. Section 1: Commit Summary\n" +
-                    "   - List all commit messages associated with this Pull Request.\n\n" +
-
-                    "3. Section 2: Brief Overview\n" +
-                    "   - Provide a concise enterprise-level explanation of what this Pull Request implements.\n\n" +
-
-                    "4. Section 3: Files / Entities Modified\n" +
-                    "   From the PR Diff, clearly identify:\n" +
-                    "   - Modified files\n" +
-                    "   - Added files\n" +
-                    "   - Deleted files\n" +
-                    "   - Any identifiable classes, functions, APIs, or key entities impacted\n" +
-                    "   - Use exact names as shown in the diff\n\n" +
-
-                    "5. Section 4: Technical Impact\n" +
-                    "   - Explain the technical impact of these changes\n" +
-                    "   - Mention affected modules, components, or services if identifiable\n\n" +
-
-                    "6. Section 5: Deployment / Release Notes\n" +
-                    "   Indicate whether any of the following are affected:\n" +
-                    "   - Database scripts or schema\n" +
-                    "   - Configuration files\n" +
-                    "   - CI/CD pipelines\n" +
-                    "   - Workflows or automation\n" +
-                    "   - Infrastructure or environment changes\n\n" +
-
-                    "INPUT DATA:\n\n" +
-
-                    "PR Title:\n${{ github.event.pull_request.title }}\n\n" +
-                    "GitHub Actor:\n${{ github.actor }}\n\n" +
-                    "Commit Messages:\n${{ github.event.pull_request.body }}\n\n" +
-
-                    "PR Diff:\n\n" + $diff + "\n\n" +
-
-                    "OUTPUT REQUIREMENTS:\n" +
-                    "- Professional and enterprise-ready\n" +
-                    "- Clear section headings\n" +
-                    "- Clean formatting suitable for Word conversion\n" +
-                    "- Formal technical documentation tone"
+                    ("Generate a structured enterprise deployment document for this Pull Request.\n\n"
+                    + "DOCUMENT TITLE:\nAEAP Deployment Guide\n\n"
+                    + "HEADER SECTION:\n"
+                    + "- Version: 1.0\n"
+                    + "- Date: " + (now | strftime("%Y-%m-%d")) + "\n"
+                    + "- Updated By: " + $actor + "\n"
+                    + "- Description: " + $title + "\n\n"
+                    + "SECTION 1: Commit Summary\n"
+                    + "List all commit messages associated with this Pull Request:\n"
+                    + $body + "\n\n"
+                    + "SECTION 2: Brief Overview\n"
+                    + "Provide a concise enterprise-level explanation of what this Pull Request implements.\n\n"
+                    + "SECTION 3: Files / Entities Modified\n"
+                    + "From the PR Diff below clearly identify:\n"
+                    + "- Modified files\n"
+                    + "- Added files\n"
+                    + "- Deleted files\n"
+                    + "- Impacted classes, functions, APIs, or key entities\n"
+                    + "Use exact names from the diff.\n\n"
+                    + "SECTION 4: Technical Impact\n"
+                    + "Explain the technical impact of these changes.\n\n"
+                    + "SECTION 5: Deployment / Release Notes\n"
+                    + "Indicate whether any of the following are affected:\n"
+                    + "- Database scripts or schema\n"
+                    + "- Configuration files\n"
+                    + "- CI/CD pipelines\n"
+                    + "- Workflows or automation\n"
+                    + "- Infrastructure or environment changes\n\n"
+                    + "PR DIFF:\n" + $diff)
                 }
               ],
-              max_completion_tokens: 1500
+              max_completion_tokens: 1800
             }' > request.json
+
+          echo "Generated request.json:"
+          cat request.json
 
       # 5️ Call Azure OpenAI
       - name: Call Azure OpenAI
@@ -118,7 +105,8 @@ jobs:
             -d @request.json \
             -o response.json
 
-          echo "Response received."
+          echo "Response:"
+          cat response.json
 
       # 6️ Extract documentation safely
       - name: Extract documentation
@@ -130,7 +118,8 @@ jobs:
             jq -r '.error.message' response.json >> documentation.md
           fi
 
-          echo "Documentation generated successfully."
+          echo "Generated documentation:"
+          cat documentation.md
 
       # 7️ Convert to Word document
       - name: Convert to Word document
@@ -138,8 +127,8 @@ jobs:
           pandoc documentation.md -o SIG_Documentation.docx
 
       # 8️ Upload artifact
-      - name: Upload PR Documentation
+      - name: Upload SIG Documentation
         uses: actions/upload-artifact@v4
         with:
-          name: SIG_Documentation
+          name: SIG-Documentation
           path: SIG_Documentation.docx
