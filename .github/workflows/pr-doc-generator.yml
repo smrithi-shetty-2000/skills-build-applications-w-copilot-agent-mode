@@ -21,16 +21,27 @@ jobs:
         run: |
           PR_CONTENT=$(cat pr_changes.txt | sed 's/"/\\"/g')
 
+          cat <<EOF > request.json
+          {
+          "messages": [
+          {
+          "role": "system",
+          "content": "You are a documentation assistant."
+          },
+          {
+          "role": "user",
+          "content": "Generate documentation for this PR change:\n\n$PR_CONTENT"
+          }
+          ],
+          "max_tokens": 800
+          }
+          EOF
+
           curl -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-02-15-preview" \
           -H "Content-Type: application/json" \
           -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
-          -d "{
-          \"messages\": [
-          {\"role\": \"system\", \"content\": \"You are a documentation assistant.\"},
-          {\"role\": \"user\", \"content\": \"Generate documentation for this PR change:\n\n${PR_CONTENT}\"}
-          ],
-          \"max_tokens\": 800
-          }" > output.json
+          --data @request.json \
+          > output.json
 
       - name: Upload doc
         uses: actions/upload-artifact@v4
