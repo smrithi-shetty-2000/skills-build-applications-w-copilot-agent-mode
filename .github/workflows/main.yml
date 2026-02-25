@@ -1,0 +1,37 @@
+name: PR Doc Generator
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  generate-doc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get PR diff
+        run: |
+          git fetch origin main
+          git diff origin/main > pr_changes.txt
+
+      - name: Call Azure OpenAI
+        run: |
+          curl -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-02-15-preview" \
+          -H "Content-Type: application/json" \
+          -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
+          -d '{
+          "messages": [
+          {"role": "system", "content": "You are a documentation assistant."},
+          {"role": "user", "content": "Generate documentation for this PR change:\n\n'$(cat pr_changes.txt)' "}
+          ],
+          "max_tokens": 800
+          }' > output.json
+
+      - name: Upload doc
+        uses: actions/upload-artifact@v3
+        with:
+          name: pr-documentation
+          path: output.json
