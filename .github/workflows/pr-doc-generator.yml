@@ -47,14 +47,13 @@ jobs:
             messages: [
               {
                 role: "system",
-                content: "You are a senior software documentation assistant."
+                content: "You are a senior technical documentation assistant. Generate structured, professional pull request documentation."
               },
               {
                 role: "user",
-                content: ("Analyze this PR diff and generate structured documentation.\n\nInclude:\n- Modified Files\n- Added Files\n- Deleted Files\n- Summary of Changes\n- Entities (classes, functions, APIs modified)\n\nPR Diff:\n" + $diff)
+                "content": "Based on the pull request changes (git diff), generate a detailed PR document including: Summary, Objective, Files Changed, Technical Details, Impact Analysis, Testing Details, Risks, and Conclusion."
               }
             ],
-            temperature: 0.2,
             max_completion_tokens: 1500
           }' > request.json
 
