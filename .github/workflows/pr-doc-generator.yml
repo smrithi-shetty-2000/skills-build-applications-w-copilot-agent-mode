@@ -37,7 +37,7 @@ jobs:
           }
           EOF
 
-          curl -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-02-15-preview" \
+          curl -X POST "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-12-01-preview" \
           -H "Content-Type: application/json" \
           -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
           --data @request.json \
