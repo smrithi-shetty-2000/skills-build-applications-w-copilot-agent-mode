@@ -23,7 +23,6 @@ jobs:
         run: |
           echo "Base branch: ${{ github.event.pull_request.base.ref }}"
           echo "Head branch: ${{ github.event.pull_request.head.ref }}"
-
           git fetch origin ${{ github.event.pull_request.base.ref }}
           git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.diff
 
@@ -59,33 +58,46 @@ jobs:
                   role: "user",
                   content:
                     ("Generate a structured enterprise deployment document for this Pull Request.\n\n"
+
                     + "DOCUMENT TITLE:\nAEAP Deployment Guide\n\n"
+
                     + "HEADER SECTION:\n"
-                    + "- Version: 1.0\n"
-                    + "- Date: " + (now | strftime("%Y-%m-%d")) + "\n"
-                    + "- Updated By: " + $actor + "\n"
-                    + "- Description: " + $title + "\n\n"
+                    + "| Version | Date | Updated By | Comments |\n"
+                    + "|---------|------|------------|----------|\n"
+                    + "| 1.0 | " + (now | strftime("%Y-%m-%d")) + " | " + $actor + " | " + $title + " |\n\n"
+                    + "------------------------------------------------------------\n\n"
+
                     + "SECTION 1: Commit Summary\n"
-                    + "List all commit messages associated with this Pull Request:\n"
-                    + $body + "\n\n"
+                    + "List all commit messages associated with this Pull Request:\n\n"
+                    + ($body // "No description provided") + "\n\n"
+                    + "------------------------------------------------------------\n\n"
+
                     + "SECTION 2: Brief Overview\n"
-                    + "Provide a concise enterprise-level explanation of what this Pull Request implements.\n\n"
+                    + "Provide a concise 3-4 line enterprise-level explanation of what this Pull Request implements.\n\n"
+                    + "------------------------------------------------------------\n\n"
+
                     + "SECTION 3: Files / Entities Modified\n"
-                    + "From the PR Diff below clearly identify:\n"
-                    + "- Modified files\n"
-                    + "- Added files\n"
+                    + "From the PR Diff below clearly identify and list ALL:\n"
+                    + "- Modified files (complete list)\n"
+                    + "- Added files (include every new file added in this PR)\n"
                     + "- Deleted files\n"
                     + "- Impacted classes, functions, APIs, or key entities\n"
-                    + "Use exact names from the diff.\n\n"
+                    + "Keep this section short and structured.\n\n"
+                    + "------------------------------------------------------------\n\n"
+
                     + "SECTION 4: Technical Impact\n"
-                    + "Explain the technical impact of these changes.\n\n"
+                    + "Provide a short and precise technical impact summary (maximum 5 lines).\n\n"
+                    + "------------------------------------------------------------\n\n"
+
                     + "SECTION 5: Deployment / Release Notes\n"
-                    + "Indicate whether any of the following are affected:\n"
+                    + "Briefly indicate if any of the following are affected (Yes/No with short note):\n"
                     + "- Database scripts or schema\n"
                     + "- Configuration files\n"
                     + "- CI/CD pipelines\n"
                     + "- Workflows or automation\n"
                     + "- Infrastructure or environment changes\n\n"
+                    + "------------------------------------------------------------\n\n"
+
                     + "PR DIFF:\n" + $diff)
                 }
               ],
