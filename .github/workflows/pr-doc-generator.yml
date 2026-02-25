@@ -28,7 +28,6 @@ jobs:
 
           # Trim to avoid token overflow
           head -c 15000 pr.diff > pr_trimmed.diff
-
           echo "Diff size:"
           wc -c pr_trimmed.diff
 
@@ -57,48 +56,66 @@ jobs:
                 {
                   role: "user",
                   content:
-                    ("Generate a structured enterprise deployment document for this Pull Request.\n\n"
+                    ("Generate a professional enterprise deployment document in strict Markdown format.\n\n"
 
-                    + "DOCUMENT TITLE:\nAEAP Deployment Guide\n\n"
+                    + "Formatting Rules:\n"
+                    + "- Use Markdown only.\n"
+                    + "- Use # for main title.\n"
+                    + "- Use ## for section headings.\n"
+                    + "- Use horizontal separators (---) between sections.\n"
+                    + "- Ensure 2-3 blank lines between sections.\n"
+                    + "- Ensure spacing renders properly in Microsoft Word via Pandoc.\n\n"
 
-                    + "HEADER SECTION:\n"
+                    + "# AEAP Deployment Guide\n\n"
+                    + "---\n\n"
+
+                    + "## HEADER SECTION\n\n"
+                    + "Generate the following structured table using the dynamic values provided:\n\n"
                     + "| Version | Date | Updated By | Comments |\n"
                     + "|---------|------|------------|----------|\n"
                     + "| 1.0 | " + (now | strftime("%Y-%m-%d")) + " | " + $actor + " | " + $title + " |\n\n"
-                    + "------------------------------------------------------------\n\n"
+                    + "<br><br><br>\n\n"
+                    + "---\n\n"
 
-                    + "SECTION 1: Commit Summary\n"
+                    + "## SECTION 1: Commit Summary\n\n"
                     + "List all commit messages associated with this Pull Request:\n\n"
                     + ($body // "No description provided") + "\n\n"
-                    + "------------------------------------------------------------\n\n"
+                    + "<br><br><br>\n\n"
+                    + "---\n\n"
 
-                    + "SECTION 2: Brief Overview\n"
+                    + "## SECTION 2: Brief Overview\n\n"
                     + "Provide a concise 3-4 line enterprise-level explanation of what this Pull Request implements.\n\n"
-                    + "------------------------------------------------------------\n\n"
+                    + "<br><br><br>\n\n"
+                    + "---\n\n"
 
-                    + "SECTION 3: Files / Entities Modified\n"
-                    + "From the PR Diff below clearly identify and list ALL:\n"
-                    + "- Modified files (complete list)\n"
-                    + "- Added files (include every new file added in this PR)\n"
-                    + "- Deleted files\n"
-                    + "- Impacted classes, functions, APIs, or key entities\n"
-                    + "Keep this section short and structured.\n\n"
-                    + "------------------------------------------------------------\n\n"
+                    + "## SECTION 3: Files / Entities Modified\n\n"
+                    + "Clearly structure into sub-sections:\n\n"
+                    + "### Modified Files\n"
+                    + "### Added Files\n"
+                    + "### Deleted Files\n"
+                    + "### Impacted Classes / Functions / APIs\n\n"
+                    + "Keep structured and clean.\n\n"
+                    + "<br><br><br>\n\n"
+                    + "---\n\n"
 
-                    + "SECTION 4: Technical Impact\n"
+                    + "## SECTION 4: Technical Impact\n\n"
                     + "Provide a short and precise technical impact summary (maximum 5 lines).\n\n"
-                    + "------------------------------------------------------------\n\n"
+                    + "<br><br><br>\n\n"
+                    + "---\n\n"
 
-                    + "SECTION 5: Deployment / Release Notes\n"
-                    + "Briefly indicate if any of the following are affected (Yes/No with short note):\n"
+                    + "## SECTION 5: Deployment / Release Notes\n\n"
+                    + "Present the following in a structured bullet format with Yes/No and short note:\n"
                     + "- Database scripts or schema\n"
                     + "- Configuration files\n"
                     + "- CI/CD pipelines\n"
                     + "- Workflows or automation\n"
                     + "- Infrastructure or environment changes\n\n"
-                    + "------------------------------------------------------------\n\n"
+                    + "<br><br><br>\n\n"
+                    + "---\n\n"
 
-                    + "PR DIFF:\n" + $diff)
+                    + "## PR DIFF ANALYSIS\n\n"
+                    + "Use the diff below to extract file changes and impacted entities.\n\n"
+                    + $diff)
                 }
               ],
               max_completion_tokens: 1800
