@@ -2,75 +2,169 @@ name: Generate PR Documentation
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 jobs:
   generate-doc:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️ Checkout full repo history - Test Comments
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Fetch main branch
-        run: git fetch origin main
-
+      # 2️ Generate diff using PR base and head
       - name: Generate PR diff
         run: |
-          git diff origin/main > pr.diff
-          wc -c pr.diff
+          echo "Base branch: ${{ github.event.pull_request.base.ref }}"
+          echo "Head branch: ${{ github.event.pull_request.head.ref }}"
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git diff origin/${{ github.event.pull_request.base.ref }}...HEAD > pr.diff
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
+          # Trim to avoid token overflow
+          head -c 15000 pr.diff > pr_trimmed.diff
+          echo "Diff size:"
+          wc -c pr_trimmed.diff
 
+      # 3️ Install dependencies
+      - name: Install jq and pandoc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq pandoc
+
+      # 4️ Prepare JSON safely using jq
       - name: Prepare OpenAI request
         run: |
-          DIFF_CONTENT=$(cat pr.diff | sed 's/"/\\"/g')
+          echo "Fetching PR file list from GitHub API..."
 
-          cat <<EOF > request.json
-          {
-          "messages": [
-          {
-          "role": "system",
-          "content": "You are a senior software documentation assistant."
-          },
-          {
-          "role": "user",
-          "content": "Analyze this PR diff and generate structured documentation.\n\nInclude:\n- Modified Files\n- Added Files\n- Classes Added/Modified\n- Methods Added/Modified\n- APIs changed\n\nClearly mention all entity names exactly as written.\n\nPR DIFF:\n$DIFF_CONTENT"
-          }
-          ],
-          "temperature": 0.2,
-          "max_tokens": 2000
-          }
-          EOF
+          curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files \
+            > pr_files.json
 
+          echo "Preparing trimmed diff..."
+          head -c 60000 pr.diff > pr_trimmed.diff
+
+          DIFF_CONTENT=$(cat pr_trimmed.diff)
+          FILES_CONTENT=$(cat pr_files.json)
+
+          jq -n \
+            --arg actor "${{ github.actor }}" \
+            --arg title "${{ github.event.pull_request.title }}" \
+            --arg body "${{ github.event.pull_request.body }}" \
+            --arg diff "$DIFF_CONTENT" \
+            --arg files "$FILES_CONTENT" \
+            '{
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a senior enterprise software release documentation specialist."
+                },
+                {
+                  role: "user",
+                  content:
+                    ("STRICT OUTPUT RULES:\n"
+                    + "- Return ONLY valid Markdown.\n"
+                    + "- DO NOT print raw git diff.\n"
+                    + "- DO NOT print JSON.\n"
+                    + "- DO NOT echo input.\n"
+                    + "- Output must end after Section 5.\n\n"
+
+                    + "# AEAP Deployment Guide\n\n"
+                    + "---\n\n"
+
+                    + "## HEADER SECTION\n\n"
+                    + "| Version | Date | Updated By | Comments |\n"
+                    + "|---------|------|------------|----------|\n"
+                    + "| 1.0 | " + (now | strftime("%Y-%m-%d")) + " | " + $actor + " | " + $title + " |\n\n"
+
+                    + "---\n\n"
+
+                    + "## SECTION 1: Commit Summary\n\n"
+                    + ($body // "No description provided") + "\n\n"
+
+                    + "---\n\n"
+
+                    + "## SECTION 2: Brief Overview\n\n"
+                    + "Provide a concise 3-4 line enterprise-level summary of this PR.\n\n"
+
+                    + "---\n\n"
+
+                    + "## SECTION 3: Files / Entities Modified\n\n"
+                    + "Classify using PR FILE LIST JSON below.\n"
+                    + "Clearly separate into:\n"
+                    + "### Modified Files\n"
+                    + "### Added Files\n"
+                    + "### Deleted Files\n"
+                    + "### Impacted Classes / Functions / APIs\n\n"
+
+                    + "---\n\n"
+
+                    + "## SECTION 4: Technical Impact\n\n"
+                    + "Provide a short and precise technical impact summary (max 5 lines).\n\n"
+
+                    + "---\n\n"
+
+                    + "## SECTION 5: Deployment / Release Notes\n\n"
+                    + "For each item answer Yes/No with short note:\n"
+                    + "- Database scripts or schema\n"
+                    + "- Configuration files\n"
+                    + "- CI/CD pipelines\n"
+                    + "- Workflows or automation\n"
+                    + "- Infrastructure or environment changes\n\n"
+
+                    + "---\n\n"
+
+                    + "INTERNAL DATA (DO NOT PRINT):\n\n"
+                    + "PR FILE LIST JSON:\n" + $files + "\n\n"
+                    + "GIT DIFF (ANALYZE BUT DO NOT PRINT):\n" + $diff
+                    )
+                }
+              ],
+              max_completion_tokens: 2000
+            }' > request.json
+
+          echo "OpenAI request prepared."
+
+      # 5️ Call Azure OpenAI
       - name: Call Azure OpenAI
-        env:
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
-          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
         run: |
-          curl -s "$AZURE_OPENAI_ENDPOINT/openai/deployments/$AZURE_OPENAI_DEPLOYMENT/chat/completions?api-version=2024-02-15-preview" \
-          -H "Content-Type: application/json" \
-          -H "api-key: $AZURE_OPENAI_KEY" \
-          -d @request.json > response.json
+          curl -s -X POST \
+            "${{ secrets.AZURE_OPENAI_ENDPOINT }}/openai/deployments/${{ secrets.AZURE_OPENAI_DEPLOYMENT }}/chat/completions?api-version=2024-12-01-preview" \
+            -H "Content-Type: application/json" \
+            -H "api-key: ${{ secrets.AZURE_OPENAI_KEY }}" \
+            -d @request.json \
+            -o response.json
 
-      - name: Extract response to Markdown
+          echo "Response received."
+
+      # 6️ Extract documentation safely
+      - name: Extract documentation
         run: |
-          jq -r '.choices[0].message.content' response.json > Documentation.md
-          cat Documentation.md
+          if jq -e '.choices[0].message.content' response.json > /dev/null; then
+            jq -r '.choices[0].message.content' response.json > documentation.md
+          else
+            echo "Azure OpenAI returned an error:" > documentation.md
+            jq -r '.error.message' response.json >> documentation.md
+          fi
 
-      - name: Install pandoc
-        run: sudo apt-get install -y pandoc
+          echo "Generated documentation:"
+          cat documentation.md
 
+      # 7️ Convert to Word document
       - name: Convert to Word document
         run: |
-          pandoc Documentation.md -o SIG_documentation.docx
+          pandoc documentation.md -o SIG_Documentation.docx
 
-      - name: Upload Word document artifact
+      # 8️ Upload artifact
+      - name: Upload SIG Documentation
         uses: actions/upload-artifact@v4
         with:
-          name: pr-documentation
-          path: SIG_documentation.docx
+          name: SIG-Documentation
+          path: SIG_Documentation.docx
