@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️ Checkout full repo history
+      # 1️ Checkout full repo history - Test Comments
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
